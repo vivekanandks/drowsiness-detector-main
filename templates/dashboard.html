@@ -1,0 +1,691 @@
+{% extends 'base.html' %}
+{% block title %}Detection — DrowsyGuard{% endblock %}
+{% block page_title %}Real-Time Detection{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+
+<!-- Calibration threshold notice (shown if personal threshold saved) -->
+<div class="threshold-notice" id="calib-notice" style="display:none;">
+  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+  Using your calibrated threshold: <strong id="calib-thresh-display">—</strong>.
+  <a href="/calibrate">Recalibrate →</a>
+</div>
+
+<!-- Alert banner -->
+<div class="alert-banner" id="alert-banner" role="alert">
+  <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <span id="alert-msg">Drowsiness detected</span>
+</div>
+
+<!-- Dashboard grid -->
+<div class="dashboard-grid">
+
+  <!-- ── Video panel ──────────────────────────────────── -->
+  <div class="panel video-panel">
+    <div class="panel-header">
+      <span class="panel-title">
+        <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>
+        Camera Feed
+      </span>
+      <div class="status-pill" id="camera-status">
+        <span class="status-dot" id="cam-dot"></span>
+        <span id="cam-text">No camera</span>
+      </div>
+    </div>
+    <div class="panel-body" style="padding:16px;">
+      <div class="video-wrapper">
+        <video id="video" autoplay muted playsinline></video>
+        <canvas id="canvas" style="display:none;"></canvas>
+        <canvas id="overlay-canvas"></canvas>
+        <div class="video-overlay" id="video-overlay">
+          <svg viewBox="0 0 24 24" style="width:40px;height:40px;stroke:var(--text-muted);fill:none;stroke-width:1.5;"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>
+          <p>Click <strong>Enable Camera</strong> to start</p>
+        </div>
+      </div>
+    </div>
+    <div class="video-controls">
+      <button class="btn-control btn-camera" id="start-camera">
+        <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>
+        Enable Camera
+      </button>
+      <button class="btn-control btn-start" id="click-photo" disabled>
+        <svg viewBox="0 0 24 24" id="btn-icon"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        <span id="btn-label">Start Detection</span>
+      </button>
+      <span class="session-timer" id="session-timer">00:00</span>
+    </div>
+  </div>
+
+  <!-- ── Metric cards ─────────────────────────────────── -->
+  <div class="panel metrics-panel">
+    <div class="panel-header">
+      <span class="panel-title">
+        <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Live Metrics
+      </span>
+    </div>
+    <div class="panel-body">
+      <div class="metrics-stack">
+
+        <!-- EAR -->
+        <div class="metric-card" id="ear-card">
+          <div class="metric-header">
+            <span class="metric-label">Eye Aspect Ratio (EAR)</span>
+            <span class="metric-badge ok" id="ear-badge">Normal</span>
+          </div>
+          <div class="metric-value" id="ear-value">—</div>
+          <div class="metric-bar-track">
+            <div class="metric-bar-fill" id="ear-bar" style="width:0%"></div>
+          </div>
+          <div class="metric-footer">
+            <span class="metric-threshold" id="ear-threshold-label">Threshold ≤ 0.25</span>
+            <span class="metric-frames" id="ear-frames">0 / 15 frames</span>
+          </div>
+        </div>
+
+        <!-- MAR -->
+        <div class="metric-card" id="mar-card">
+          <div class="metric-header">
+            <span class="metric-label">Mouth Aspect Ratio (MAR)</span>
+            <span class="metric-badge ok" id="mar-badge">Normal</span>
+          </div>
+          <div class="metric-value" id="mar-value">—</div>
+          <div class="metric-bar-track">
+            <div class="metric-bar-fill" id="mar-bar" style="width:0%"></div>
+          </div>
+          <div class="metric-footer">
+            <span class="metric-threshold">Threshold ≥ 0.75</span>
+            <span class="metric-frames" id="mar-frames">0 / 10 frames</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Session stats ─────────────────────────────────── -->
+  <div class="panel stats-panel">
+    <div class="panel-header">
+      <span class="panel-title">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Session Summary
+      </span>
+    </div>
+    <div class="panel-body">
+      <div class="session-stats">
+        <div class="session-stat">
+          <div class="session-stat-value" id="stat-alerts">0</div>
+          <div class="session-stat-label">Drowsy Alerts</div>
+        </div>
+        <div class="session-stat">
+          <div class="session-stat-value" id="stat-yawns">0</div>
+          <div class="session-stat-label">Yawn Alerts</div>
+        </div>
+        <div class="session-stat">
+          <div class="session-stat-value" id="stat-frames">0</div>
+          <div class="session-stat-label">Frames</div>
+        </div>
+        <div class="session-stat">
+          <div class="session-stat-value" id="stat-avg-ear">—</div>
+          <div class="session-stat-label">Avg EAR</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Chart ─────────────────────────────────────────── -->
+  <div class="panel chart-panel">
+    <div class="panel-header">
+      <span class="panel-title">
+        <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Metric Timeline
+      </span>
+      <div class="chart-tabs">
+        <span class="chart-tab active" data-metric="ear">EAR</span>
+        <span class="chart-tab" data-metric="mar">MAR</span>
+        <span class="chart-tab" data-metric="both">Both</span>
+      </div>
+      <button class="btn-ghost" id="export-csv-btn" style="padding:4px 12px;font-size:12px;" title="Export session data as CSV">
+        <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        CSV
+      </button>
+    </div>
+    <div class="panel-body" style="padding:16px;">
+      <canvas id="chartContainer"></canvas>
+    </div>
+  </div>
+
+  <!-- ── Event log ─────────────────────────────────────── -->
+  <div class="panel log-panel">
+    <div class="panel-header">
+      <span class="panel-title">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Event Log
+      </span>
+    </div>
+    <div class="panel-body" style="padding:0 20px;">
+      <div class="event-log" id="event-log">
+        <div class="empty-state">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Events will appear here once detection starts
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Hidden audio removed — replaced by Web Audio API beeps below -->
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  "use strict";
+
+  // ── DOM refs ───────────────────────────────────────────────
+  const videoEl       = document.getElementById("video");
+  const canvasEl      = document.getElementById("canvas");
+  const overlayCanvas = document.getElementById("overlay-canvas");
+  const overlayCtx    = overlayCanvas.getContext("2d");
+  const cameraBtn     = document.getElementById("start-camera");
+  const detectBtn     = document.getElementById("click-photo");
+  const btnLabel      = document.getElementById("btn-label");
+  const btnIcon       = document.getElementById("btn-icon");
+  const camOverlay    = document.getElementById("video-overlay");
+  const alertBanner   = document.getElementById("alert-banner");
+  const alertMsg      = document.getElementById("alert-msg");
+  const sessionTimer  = document.getElementById("session-timer");
+  const liveBadge     = document.getElementById("live-badge");
+  const statusDot     = document.getElementById("status-dot");
+  const statusText    = document.getElementById("status-text");
+  const camDot        = document.getElementById("cam-dot");
+  const camText       = document.getElementById("cam-text");
+  const eventLog      = document.getElementById("event-log");
+  const exportBtn     = document.getElementById("export-csv-btn");
+  const calibNotice   = document.getElementById("calib-notice");
+  const calibThreshDisp = document.getElementById("calib-thresh-display");
+
+  const earValue  = document.getElementById("ear-value");
+  const earBadge  = document.getElementById("ear-badge");
+  const earBar    = document.getElementById("ear-bar");
+  const earCard   = document.getElementById("ear-card");
+  const earFrames = document.getElementById("ear-frames");
+  const marValue  = document.getElementById("mar-value");
+  const marBadge  = document.getElementById("mar-badge");
+  const marBar    = document.getElementById("mar-bar");
+  const marCard   = document.getElementById("mar-card");
+  const marFrames = document.getElementById("mar-frames");
+
+  const statAlerts = document.getElementById("stat-alerts");
+  const statYawns  = document.getElementById("stat-yawns");
+  const statFrames = document.getElementById("stat-frames");
+  const statAvgEar = document.getElementById("stat-avg-ear");
+
+  // ── Calibrated threshold ──────────────────────────────────
+  const storedThresh = parseFloat(localStorage.getItem("dg_ear_threshold"));
+  const EAR_THRESH   = (!isNaN(storedThresh) && storedThresh > 0.1) ? storedThresh : 0.25;
+  const MAR_THRESH   = 0.75;
+  const EAR_CONSEC_REQ  = 15;
+  const MAR_CONSEC_REQ  = 10;
+  const DROWSY_COOLDOWN = 6000;
+  const YAWN_COOLDOWN   = 4000;
+  const NO_FACE_WARN_AT = 20;
+
+  if (!isNaN(storedThresh)) {
+    calibNotice.style.display = "flex";
+    calibThreshDisp.textContent = EAR_THRESH.toFixed(3);
+    document.getElementById("ear-threshold-label").textContent = "Threshold ≤ " + EAR_THRESH.toFixed(3);
+  }
+
+  // ── Web Audio beeps (no external audio files needed) ──────
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  function beep(freq, duration, type = "sine", volume = 0.4) {
+    const osc  = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type      = type;
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    osc.start(audioCtx.currentTime);
+    osc.stop(audioCtx.currentTime + duration);
+  }
+
+  function playDrowsyAlert() {
+    // Three descending urgent beeps
+    beep(880, 0.25, "square", 0.5);
+    setTimeout(() => beep(660, 0.25, "square", 0.5), 280);
+    setTimeout(() => beep(440, 0.4,  "square", 0.5), 560);
+  }
+
+  function playYawnAlert() {
+    // Gentle two-tone chime
+    beep(523, 0.3, "sine", 0.35);
+    setTimeout(() => beep(659, 0.4, "sine", 0.3), 320);
+  }
+
+  // Unlock AudioContext on first user interaction
+  document.addEventListener("click", () => {
+    if (audioCtx.state === "suspended") audioCtx.resume();
+  }, { once: true });
+
+  // ── Session data log (for CSV export) ─────────────────────
+  const sessionLog = []; // [{frame, ts, ear, mar, event}]
+
+  // ── Runtime state ─────────────────────────────────────────
+  let running         = false;
+  let intervalID      = null;
+  let sessionSec      = 0;
+  let timerID         = null;
+  let frameCount      = 0;
+  let earSum          = 0;
+  let noFaceStreak    = 0;
+  let earConsecLow    = 0;
+  let marConsecHigh   = 0;
+  let lastDrowsyAlert = 0;
+  let lastYawnAlert   = 0;
+  let totalDrowsy     = 0;
+  let totalYawns      = 0;
+
+  // ── Chart state ───────────────────────────────────────────
+  const chartLabels = [];
+  const earData     = [];
+  const marData     = [];
+  const MAX_PTS     = 80;
+
+  // ── Chart.js ──────────────────────────────────────────────
+  const chartCtx  = document.getElementById("chartContainer").getContext("2d");
+  const earDataset = {
+    label: "EAR", data: earData,
+    borderColor: "#58a6ff", backgroundColor: "rgba(88,166,255,0.08)",
+    borderWidth: 2, pointRadius: 0, tension: 0.4, fill: true,
+  };
+  const marDataset = {
+    label: "MAR", data: marData,
+    borderColor: "#3fb950", backgroundColor: "rgba(63,185,80,0.08)",
+    borderWidth: 2, pointRadius: 0, tension: 0.4, fill: true, hidden: true,
+  };
+  const chart = new Chart(chartCtx, {
+    type: "line",
+    data: { labels: chartLabels, datasets: [earDataset, marDataset] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 0 },
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: "#161b22", borderColor: "rgba(48,54,61,.8)", borderWidth: 1,
+          titleColor: "#8b949e", bodyColor: "#e6edf3", padding: 10,
+        },
+      },
+      scales: {
+        x: { display: false },
+        y: {
+          min: 0, max: 1.2,
+          grid: { color: "rgba(48,54,61,.5)" },
+          ticks: { color: "#484f58", font: { size: 11 }, maxTicksLimit: 5 },
+        },
+      },
+    },
+  });
+
+  // Inline threshold lines plugin — no external annotation plugin needed
+  Chart.register({
+    id: "thresholdLines",
+    afterDraw(ch) {
+      const { ctx: c, chartArea: a, scales: { y } } = ch;
+      c.save(); c.setLineDash([5, 5]); c.lineWidth = 1;
+      const earY = y.getPixelForValue(EAR_THRESH);
+      c.strokeStyle = "rgba(210,153,34,0.7)";
+      c.beginPath(); c.moveTo(a.left, earY); c.lineTo(a.right, earY); c.stroke();
+      if (!marDataset.hidden) {
+        const marY = y.getPixelForValue(MAR_THRESH);
+        c.strokeStyle = "rgba(248,81,73,0.5)";
+        c.beginPath(); c.moveTo(a.left, marY); c.lineTo(a.right, marY); c.stroke();
+      }
+      c.restore();
+    },
+  });
+
+  document.querySelectorAll(".chart-tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".chart-tab").forEach(t => t.classList.remove("active"));
+      tab.classList.add("active");
+      const m = tab.dataset.metric;
+      earDataset.hidden = (m === "mar");
+      marDataset.hidden = (m === "ear");
+      if (m === "both") { earDataset.hidden = false; marDataset.hidden = false; }
+      chart.update("none");
+    });
+  });
+
+  // ── Camera ────────────────────────────────────────────────
+  cameraBtn.addEventListener("click", async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 640, height: 480, facingMode: "user" }, audio: false,
+      });
+      videoEl.srcObject = stream;
+
+      videoEl.addEventListener("loadedmetadata", () => {
+        const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
+        canvasEl.width  = vw; canvasEl.height  = vh;
+        overlayCanvas.width = vw; overlayCanvas.height = vh;
+      }, { once: true });
+
+      camOverlay.classList.add("hidden");
+      camDot.classList.add("active");
+      camText.textContent = "Active";
+      cameraBtn.disabled  = true;
+      detectBtn.disabled  = false;
+      logEvent("info", "📷", "Camera enabled");
+    } catch (err) {
+      logEvent("warn", "⚠️", "Camera access denied — " + err.message);
+    }
+  });
+
+  // ── Detection toggle ──────────────────────────────────────
+  detectBtn.addEventListener("click", () => {
+    running ? stopDetection() : startDetection();
+  });
+
+  function startDetection() {
+    frameCount = earSum = noFaceStreak = 0;
+    earConsecLow = marConsecHigh = 0;
+    lastDrowsyAlert = lastYawnAlert = 0;
+    totalDrowsy = totalYawns = 0;
+    sessionSec  = 0;
+    sessionLog.length = 0;
+    sessionTimer.textContent = "00:00";
+    statAlerts.textContent = statYawns.textContent = statFrames.textContent = "0";
+    statAvgEar.textContent = "—";
+    resetMetricCards();
+
+    running    = true;
+    intervalID = setInterval(detect, 100);
+    timerID    = setInterval(() => {
+      sessionSec++;
+      sessionTimer.textContent =
+        String(Math.floor(sessionSec / 60)).padStart(2, "0") + ":" +
+        String(sessionSec % 60).padStart(2, "0");
+    }, 1000);
+
+    btnLabel.textContent = "Stop Detection";
+    btnIcon.innerHTML    = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
+    detectBtn.classList.add("running");
+    liveBadge.style.display = "inline";
+    setStatus("active", "Detecting");
+    logEvent("info", "▶", `Session started — EAR threshold: ${EAR_THRESH.toFixed(3)}`);
+  }
+
+  function stopDetection() {
+    running = false;
+    clearInterval(intervalID); clearInterval(timerID);
+    intervalID = null;
+    clearOverlay();
+    btnLabel.textContent = "Start Detection";
+    btnIcon.innerHTML    = '<polygon points="5 3 19 12 5 21 5 3"/>';
+    detectBtn.classList.remove("running");
+    liveBadge.style.display = "none";
+    setStatus("", "Idle");
+    hideBanner();
+    logEvent("info", "⏹", `Session ended — ${totalDrowsy} drowsy alert(s), ${totalYawns} yawn(s)`);
+  }
+
+  // ── Main detection loop ───────────────────────────────────
+  function detect() {
+    const c = canvasEl.getContext("2d");
+    c.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
+
+    fetch("/submit-photo", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ todo: canvasEl.toDataURL("image/jpeg", 0.8) }),
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.face_found) { handleNoFace(); return; }
+      noFaceStreak = 0;
+
+      const ear = typeof data.ear === "number" ? data.ear : 0;
+      const mar = typeof data.mar === "number" ? data.mar : 0;
+
+      frameCount++;
+      earSum += ear;
+      statFrames.textContent = frameCount;
+      statAvgEar.textContent = (earSum / frameCount).toFixed(3);
+
+      // Landmark overlay
+      if (data.overlay) drawOverlay(data.overlay);
+
+      updateMetricCards(ear, mar);
+      updateChart(ear, mar);
+      checkAlerts(ear, mar);
+
+      // Record to session log
+      sessionLog.push({
+        frame: frameCount,
+        time: sessionSec,
+        ear: ear.toFixed(4),
+        mar: mar.toFixed(4),
+        event: "",
+      });
+    })
+    .catch(() => {});
+  }
+
+  // ── Landmark overlay ─────────────────────────────────────
+  function drawOverlay(overlay) {
+    overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+    const W = overlayCanvas.width, H = overlayCanvas.height;
+
+    const drawRegion = (pts, color) => {
+      if (!pts || !pts.length) return;
+      overlayCtx.beginPath();
+      overlayCtx.moveTo(pts[0][0] * W, pts[0][1] * H);
+      for (let i = 1; i < pts.length; i++)
+        overlayCtx.lineTo(pts[i][0] * W, pts[i][1] * H);
+      overlayCtx.closePath();
+      overlayCtx.strokeStyle = color;
+      overlayCtx.lineWidth   = 1.5;
+      overlayCtx.stroke();
+
+      pts.forEach(p => {
+        overlayCtx.beginPath();
+        overlayCtx.arc(p[0] * W, p[1] * H, 2, 0, Math.PI * 2);
+        overlayCtx.fillStyle = color;
+        overlayCtx.fill();
+      });
+    };
+
+    // Eye colour changes to red when drowsy
+    const eyeColor = earConsecLow > 5 ? "rgba(248,81,73,0.9)" : "rgba(88,166,255,0.9)";
+    drawRegion(overlay.left_eye,  eyeColor);
+    drawRegion(overlay.right_eye, eyeColor);
+
+    // Mouth colour amber when yawning
+    const mouthColor = marConsecHigh > 3 ? "rgba(210,153,34,0.9)" : "rgba(63,185,80,0.7)";
+    drawRegion(overlay.mouth, mouthColor);
+  }
+
+  function clearOverlay() {
+    overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  }
+
+  // ── Face-not-found ────────────────────────────────────────
+  function handleNoFace() {
+    earConsecLow = marConsecHigh = 0;
+    noFaceStreak++;
+    clearOverlay();
+
+    earValue.textContent = marValue.textContent = "—";
+    earBar.style.width   = marBar.style.width   = "0%";
+    earBadge.textContent = marBadge.textContent = "No face";
+    earBadge.className   = marBadge.className   = "metric-badge";
+    earFrames.textContent = "0 / " + EAR_CONSEC_REQ + " frames";
+    marFrames.textContent = "0 / " + MAR_CONSEC_REQ + " frames";
+    [earCard, marCard].forEach(el => el.classList.remove("active", "alert"));
+    earValue.classList.remove("alert");
+
+    if (noFaceStreak === NO_FACE_WARN_AT) {
+      logEvent("warn", "👤", "No face detected — please stay in frame");
+      setStatus("warning", "No face");
+      showBanner("warn", "No face detected — please stay in camera frame");
+    } else if (noFaceStreak > NO_FACE_WARN_AT) {
+      setStatus("warning", "No face");
+    }
+  }
+
+  // ── Metric cards ─────────────────────────────────────────
+  function updateMetricCards(ear, mar) {
+    earValue.textContent = ear.toFixed(3);
+    earBar.style.width   = Math.min(100, (ear / 0.45) * 100) + "%";
+
+    if (ear < EAR_THRESH) {
+      earBadge.textContent = "Low — Drowsy"; earBadge.className = "metric-badge danger";
+      earBar.className = "metric-bar-fill danger";
+      earCard.classList.add("active", "alert"); earValue.classList.add("alert");
+    } else if (ear < EAR_THRESH + 0.05) {
+      earBadge.textContent = "Caution";        earBadge.className = "metric-badge warn";
+      earBar.className = "metric-bar-fill warn";
+      earCard.classList.add("active"); earCard.classList.remove("alert");
+      earValue.classList.remove("alert");
+    } else {
+      earBadge.textContent = "Normal";          earBadge.className = "metric-badge ok";
+      earBar.className = "metric-bar-fill";
+      earCard.classList.remove("active", "alert"); earValue.classList.remove("alert");
+    }
+    earFrames.textContent = earConsecLow + " / " + EAR_CONSEC_REQ + " frames";
+
+    marValue.textContent = mar.toFixed(3);
+    marBar.style.width   = Math.min(100, (mar / 1.2) * 100) + "%";
+    if (mar > MAR_THRESH) {
+      marBadge.textContent = "Yawning"; marBadge.className = "metric-badge warn";
+      marBar.className = "metric-bar-fill warn"; marCard.classList.add("active");
+    } else {
+      marBadge.textContent = "Normal";  marBadge.className = "metric-badge ok";
+      marBar.className = "metric-bar-fill"; marCard.classList.remove("active", "alert");
+    }
+    marFrames.textContent = marConsecHigh + " / " + MAR_CONSEC_REQ + " frames";
+  }
+
+  function resetMetricCards() {
+    [earValue, marValue].forEach(el => { el.textContent = "—"; el.classList.remove("alert"); });
+    [earBar, marBar].forEach(el => { el.style.width = "0%"; el.className = "metric-bar-fill"; });
+    [earCard, marCard].forEach(el => el.classList.remove("active", "alert"));
+    earBadge.textContent = "Normal"; earBadge.className = "metric-badge ok";
+    marBadge.textContent = "Normal"; marBadge.className = "metric-badge ok";
+    earFrames.textContent = "0 / " + EAR_CONSEC_REQ + " frames";
+    marFrames.textContent = "0 / " + MAR_CONSEC_REQ + " frames";
+    chartLabels.length = earData.length = marData.length = 0;
+    chart.update("none");
+  }
+
+  // ── Chart ─────────────────────────────────────────────────
+  function updateChart(ear, mar) {
+    chartLabels.push(frameCount);
+    earData.push(+ear.toFixed(4));
+    marData.push(+mar.toFixed(4));
+    if (chartLabels.length > MAX_PTS) { chartLabels.shift(); earData.shift(); marData.shift(); }
+    chart.update("none");
+  }
+
+  // ── Alert logic ───────────────────────────────────────────
+  function checkAlerts(ear, mar) {
+    const now = Date.now();
+    ear < EAR_THRESH ? earConsecLow++ : (earConsecLow = 0);
+    if (earConsecLow >= EAR_CONSEC_REQ && (now - lastDrowsyAlert) > DROWSY_COOLDOWN) {
+      lastDrowsyAlert = now; earConsecLow = 0;
+      triggerDrowsyAlert();
+    }
+    mar > MAR_THRESH ? marConsecHigh++ : (marConsecHigh = 0);
+    if (marConsecHigh >= MAR_CONSEC_REQ && (now - lastYawnAlert) > YAWN_COOLDOWN) {
+      lastYawnAlert = now; marConsecHigh = 0;
+      triggerYawnAlert();
+    }
+  }
+
+  // ── Alert triggers ────────────────────────────────────────
+  function triggerDrowsyAlert() {
+    totalDrowsy++;
+    statAlerts.textContent = totalDrowsy;
+    setStatus("danger", "Drowsy!");
+    showBanner("danger", "⚠ Drowsiness detected — please pull over or take a break");
+    logEvent("alert", "😴", `Drowsiness alert #${totalDrowsy}`);
+    if (sessionLog.length) sessionLog[sessionLog.length - 1].event = "DROWSY_ALERT";
+    playDrowsyAlert();
+    setTimeout(() => { if (running) setStatus("active", "Detecting"); hideBanner(); }, 5000);
+  }
+
+  function triggerYawnAlert() {
+    totalYawns++;
+    statYawns.textContent = totalYawns;
+    showBanner("warn", `Yawn detected (${totalYawns} total)`);
+    logEvent("warn", "🥱", `Yawn #${totalYawns}`);
+    if (sessionLog.length) sessionLog[sessionLog.length - 1].event = "YAWN_ALERT";
+    playYawnAlert();
+    setTimeout(hideBanner, 3500);
+    if (totalYawns >= 5) {
+      logEvent("alert", "🛑", "High fatigue — consider stopping");
+      showBanner("danger", "⚠ High fatigue detected — strongly consider stopping");
+    }
+  }
+
+  // ── CSV export ────────────────────────────────────────────
+  exportBtn.addEventListener("click", () => {
+    if (!sessionLog.length) {
+      logEvent("info", "ℹ", "No session data to export yet"); return;
+    }
+    const rows = ["frame,time_s,ear,mar,event",
+      ...sessionLog.map(r => `${r.frame},${r.time},${r.ear},${r.mar},${r.event}`)
+    ].join("\n");
+    const blob = new Blob([rows], { type: "text/csv" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `drowsyguard_session_${new Date().toISOString().slice(0,19).replace(/:/g,"-")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    logEvent("info", "📥", `Exported ${sessionLog.length} frames to CSV`);
+  });
+
+  // ── UI helpers ────────────────────────────────────────────
+  function setStatus(level, text) {
+    statusDot.className    = "status-dot" + (level ? " " + level : "");
+    statusText.textContent = text;
+  }
+  function showBanner(type, msg) {
+    alertBanner.className = "alert-banner show " + type;
+    alertMsg.textContent  = msg;
+  }
+  function hideBanner() { alertBanner.className = "alert-banner"; }
+
+  function logEvent(type, icon, msg) {
+    const empty = eventLog.querySelector(".empty-state");
+    if (empty) empty.remove();
+    const now  = new Date();
+    const time = String(now.getHours()).padStart(2,"0") + ":" +
+                 String(now.getMinutes()).padStart(2,"0") + ":" +
+                 String(now.getSeconds()).padStart(2,"0");
+    const entry     = document.createElement("div");
+    entry.className = "log-entry " + type;
+    entry.innerHTML =
+      `<span class="log-time">${time}</span>` +
+      `<span class="log-icon">${icon}</span>` +
+      `<span class="log-msg">${msg}</span>`;
+    eventLog.appendChild(entry);
+    eventLog.scrollTop = eventLog.scrollHeight;
+  }
+
+})();
+</script>
+{% endblock %}

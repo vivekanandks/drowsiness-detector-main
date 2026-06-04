@@ -1,0 +1,13 @@
+# Core
+flask
+waitress
+numpy
+
+# Image / Video Processing
+opencv-python
+
+# Facial Landmark Detection
+mediapipe
+
+# Testing
+pytest

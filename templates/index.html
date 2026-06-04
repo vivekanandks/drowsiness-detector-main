@@ -1,0 +1,137 @@
+{% extends 'base.html' %}
+{% block title %}DrowsyGuard — Real-Time Fatigue Detection{% endblock %}
+{% block page_title %}Overview{% endblock %}
+
+{% block content %}
+
+<!-- Hero ─────────────────────────────────────────────── -->
+<div class="hero">
+  <div class="hero-eyebrow">
+    <span class="hero-eyebrow-dot"></span>
+    Computer Vision · Fatigue Detection
+  </div>
+  <h1>Monitor Alertness<br>in <em>Real Time</em></h1>
+  <p class="hero-desc">
+    DrowsyGuard analyses live webcam footage using facial landmark geometry to detect
+    drowsiness and yawning before they become a safety hazard — no wearables required.
+  </p>
+  <div class="hero-actions">
+    <a href="/dashboard" class="btn-primary">
+      <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      Start Detection
+    </a>
+    <a href="#how-it-works" class="btn-ghost">How it works</a>
+  </div>
+</div>
+
+<!-- Stats bar ─────────────────────────────────────────── -->
+<div class="stats-bar">
+  <div class="stat-item">
+    <div class="stat-value">468</div>
+    <div class="stat-label">Facial Landmarks</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-value">100<span style="font-size:14px;font-weight:500;color:var(--text-muted)">ms</span></div>
+    <div class="stat-label">Detection Interval</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-value">2</div>
+    <div class="stat-label">Metrics (EAR · MAR)</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-value">0</div>
+    <div class="stat-label">Custom Models Needed</div>
+  </div>
+</div>
+
+<!-- Features ──────────────────────────────────────────── -->
+<div class="section">
+  <p class="section-title">Core Features</p>
+  <div class="features-grid">
+
+    <div class="feature-card">
+      <div class="feature-icon blue">
+        <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      </div>
+      <h3>Eye Aspect Ratio (EAR)</h3>
+      <p>Detects prolonged eye closure using the geometric ratio of 6 eye landmarks per eye. Threshold breach over 20 frames triggers an alert.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-icon green">
+        <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+      </div>
+      <h3>Mouth Aspect Ratio (MAR)</h3>
+      <p>Identifies yawning episodes by measuring vertical mouth opening against horizontal span across 20 mouth landmarks.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-icon amber">
+        <svg viewBox="0 0 24 24"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+      </div>
+      <h3>Audio Alert System</h3>
+      <p>Tiered audio notifications escalate with repeated drowsiness detections, providing gentle-then-urgent warnings.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-icon purple">
+        <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      </div>
+      <h3>Live Metric Chart</h3>
+      <p>Real-time rolling chart of EAR and MAR values with visual threshold markers — see exactly how close to the limit you are.</p>
+    </div>
+
+  </div>
+</div>
+
+<!-- How it works ──────────────────────────────────────── -->
+<div class="section" id="how-it-works">
+  <p class="section-title">How It Works</p>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <h3>Grant Camera Access</h3>
+        <p>Your browser requests webcam permission. Video never leaves your device — frames are processed locally through the Flask backend running on localhost.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <h3>Landmark Detection</h3>
+        <p>Every 100 ms, a JPEG frame is sent to the backend where MediaPipe FaceMesh identifies 468 3-D facial landmarks in real time.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <h3>Geometric Analysis</h3>
+        <p>EAR and MAR are computed from landmark coordinates. Values are returned to the browser, charted, and checked against thresholds.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-content">
+        <h3>Alert if Drowsy</h3>
+        <p>If EAR falls below 0.25 for 20+ consecutive frames, or MAR exceeds 0.75 for 20 of 30 frames (yawn), an audio alert fires immediately.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Tech stack ────────────────────────────────────────── -->
+<div class="section" id="about">
+  <p class="section-title">Technology Stack</p>
+  <div class="tech-pills">
+    <span class="tech-pill">Python 3</span>
+    <span class="tech-pill">Flask</span>
+    <span class="tech-pill">MediaPipe FaceMesh</span>
+    <span class="tech-pill">OpenCV</span>
+    <span class="tech-pill">NumPy</span>
+    <span class="tech-pill">Chart.js</span>
+    <span class="tech-pill">Vanilla JS</span>
+    <span class="tech-pill">HTML5 Canvas</span>
+  </div>
+</div>
+
+{% endblock %}

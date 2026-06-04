@@ -1,0 +1,378 @@
+{% extends 'base.html' %}
+{% block title %}Calibrate — DrowsyGuard{% endblock %}
+{% block page_title %}Threshold Calibration{% endblock %}
+
+{% block content %}
+
+<div class="calibration-grid">
+
+  <!-- ── Left: camera + steps ──────────────────────────────── -->
+  <div style="display:flex;flex-direction:column;gap:20px;">
+
+    <!-- Camera panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">
+          <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>
+          Camera Feed
+        </span>
+        <div class="status-pill">
+          <span class="status-dot" id="cam-dot"></span>
+          <span id="cam-text">No camera</span>
+        </div>
+      </div>
+      <div class="panel-body" style="padding:16px;">
+        <div class="calib-video-wrapper">
+          <video id="calib-video" autoplay muted playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"></video>
+          <canvas id="calib-capture" style="display:none;"></canvas>
+          <canvas id="calib-overlay" class="calib-overlay-canvas"></canvas>
+
+          <div class="countdown-ring-wrap hidden" id="countdown-wrap">
+            <div class="countdown-ring" id="countdown-num">3</div>
+            <span class="countdown-label">Get ready…</span>
+          </div>
+
+          <!-- No-camera overlay -->
+          <div class="video-overlay" id="calib-cam-overlay">
+            <svg viewBox="0 0 24 24" style="width:40px;height:40px;stroke:var(--text-muted);fill:none;stroke-width:1.5;"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>
+            <p>Click <strong>Enable Camera</strong> below</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Capture progress bar -->
+      <div class="capture-progress-wrap hidden" id="progress-wrap">
+        <div class="capture-progress-label">
+          <span>Capturing frames…</span>
+          <span id="progress-count">0 / 60</span>
+        </div>
+        <div class="capture-progress-track">
+          <div class="capture-progress-fill" id="progress-fill" style="width:0%"></div>
+        </div>
+      </div>
+
+      <div class="video-controls">
+        <button class="btn-control btn-camera" id="enable-cam-btn">
+          <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>
+          Enable Camera
+        </button>
+        <button class="btn-control btn-start" id="start-calib-btn" disabled>
+          <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Start Calibration
+        </button>
+        <span class="session-timer" id="calib-status-text">Idle</span>
+      </div>
+    </div>
+
+    <!-- Steps guide -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">
+          <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          How to Calibrate
+        </span>
+      </div>
+      <div class="panel-body">
+        <div class="calib-steps">
+          <div class="calib-step-item active" id="step-1">
+            <div class="calib-step-dot">1</div>
+            Enable your camera and position your face in frame
+          </div>
+          <div class="calib-step-item" id="step-2">
+            <div class="calib-step-dot">2</div>
+            Click <em>Start Calibration</em> — a 3-second countdown begins
+          </div>
+          <div class="calib-step-item" id="step-3">
+            <div class="calib-step-dot">3</div>
+            Keep eyes fully open and look directly at the camera for 6 seconds
+          </div>
+          <div class="calib-step-item" id="step-4">
+            <div class="calib-step-dot">4</div>
+            Review your personal baseline EAR and adjust the threshold slider if needed
+          </div>
+          <div class="calib-step-item" id="step-5">
+            <div class="calib-step-dot">5</div>
+            Click <em>Save Threshold</em> — detection will use your personal value
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Right: results panel ──────────────────────────────── -->
+  <div style="display:flex;flex-direction:column;gap:20px;">
+
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">
+          <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Your Results
+        </span>
+      </div>
+      <div class="panel-body" style="display:flex;flex-direction:column;gap:16px;">
+
+        <div class="calib-result" id="calib-result">
+
+          <div class="calib-stat-card">
+            <div class="stat-val" id="baseline-val">—</div>
+            <div class="stat-sub">Baseline EAR (eyes open)</div>
+          </div>
+
+          <div class="calib-stat-card accent">
+            <div class="stat-val" id="suggested-val">—</div>
+            <div class="stat-sub">Suggested threshold (82% of baseline)</div>
+          </div>
+
+          <div class="calib-stat-card">
+            <div class="stat-val" id="frames-val">0</div>
+            <div class="stat-sub">Valid frames captured</div>
+          </div>
+
+        </div>
+
+        <!-- Threshold slider -->
+        <div class="threshold-slider-wrap" id="slider-wrap" style="opacity:.4;pointer-events:none;">
+          <div class="threshold-slider-header">
+            <label for="thresh-slider">Your threshold</label>
+            <span id="thresh-display">0.25</span>
+          </div>
+          <input type="range" id="thresh-slider" min="0.15" max="0.40" step="0.005" value="0.25">
+          <div class="slider-hints">
+            <span>More sensitive</span>
+            <span>Less sensitive</span>
+          </div>
+        </div>
+
+        <!-- Save -->
+        <button class="btn-save" id="save-btn" disabled>
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          Save Threshold
+        </button>
+
+        <div class="saved-pill" id="saved-pill">
+          <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+          Threshold saved — detection will use <strong id="saved-val">0.25</strong>
+        </div>
+
+        <!-- Current stored value notice -->
+        <div class="threshold-notice" id="stored-notice" style="display:none;">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span>Current stored threshold: <strong id="stored-val">—</strong>. <a href="/dashboard">Go to detection →</a></span>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  "use strict";
+
+  const video       = document.getElementById("calib-video");
+  const capCanvas   = document.getElementById("calib-capture");
+  const overlayC    = document.getElementById("calib-overlay");
+  const overlayCtx  = overlayC.getContext("2d");
+  const camOverlay  = document.getElementById("calib-cam-overlay");
+  const camDot      = document.getElementById("cam-dot");
+  const camText     = document.getElementById("cam-text");
+  const enableBtn   = document.getElementById("enable-cam-btn");
+  const startBtn    = document.getElementById("start-calib-btn");
+  const statusText  = document.getElementById("calib-status-text");
+  const countWrap   = document.getElementById("countdown-wrap");
+  const countNum    = document.getElementById("countdown-num");
+  const progressWrap = document.getElementById("progress-wrap");
+  const progressFill = document.getElementById("progress-fill");
+  const progressCount = document.getElementById("progress-count");
+
+  const baselineEl  = document.getElementById("baseline-val");
+  const suggestedEl = document.getElementById("suggested-val");
+  const framesEl    = document.getElementById("frames-val");
+  const sliderWrap  = document.getElementById("slider-wrap");
+  const slider      = document.getElementById("thresh-slider");
+  const threshDisp  = document.getElementById("thresh-display");
+  const saveBtn     = document.getElementById("save-btn");
+  const savedPill   = document.getElementById("saved-pill");
+  const savedVal    = document.getElementById("saved-val");
+  const storedNotice = document.getElementById("stored-notice");
+  const storedVal   = document.getElementById("stored-val");
+
+  const CAPTURE_FRAMES = 60;
+  let earSamples = [];
+  let capturing  = false;
+  let captureID  = null;
+
+  // Steps
+  const steps = [1,2,3,4,5].map(n => document.getElementById("step-" + n));
+  function setStep(n) {
+    steps.forEach((el, i) => {
+      el.classList.remove("active", "done");
+      if (i + 1 < n)  el.classList.add("done");
+      if (i + 1 === n) el.classList.add("active");
+    });
+  }
+
+  // Show stored threshold on load
+  const stored = parseFloat(localStorage.getItem("dg_ear_threshold"));
+  if (!isNaN(stored)) {
+    storedNotice.style.display = "flex";
+    storedVal.textContent = stored.toFixed(3);
+    slider.value = stored;
+    threshDisp.textContent = stored.toFixed(3);
+  }
+
+  // Camera
+  enableBtn.addEventListener("click", async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 640, height: 480, facingMode: "user" }, audio: false,
+      });
+      video.srcObject = stream;
+      camDot.classList.add("active");
+      camText.textContent = "Active";
+      camOverlay.classList.add("hidden");
+      enableBtn.disabled = true;
+      startBtn.disabled = false;
+      statusText.textContent = "Ready";
+      setStep(2);
+
+      // Size overlay canvas to match video
+      video.addEventListener("loadedmetadata", () => {
+        overlayC.width  = video.videoWidth;
+        overlayC.height = video.videoHeight;
+        capCanvas.width  = video.videoWidth;
+        capCanvas.height = video.videoHeight;
+      }, { once: true });
+    } catch (e) {
+      statusText.textContent = "Camera denied";
+    }
+  });
+
+  // Start calibration
+  startBtn.addEventListener("click", () => {
+    startBtn.disabled = true;
+    earSamples = [];
+    setStep(3);
+    countdown(3);
+  });
+
+  function countdown(n) {
+    countWrap.classList.remove("hidden");
+    countNum.textContent = n;
+    statusText.textContent = "Get ready…";
+    if (n === 0) {
+      countWrap.classList.add("hidden");
+      startCapture();
+      return;
+    }
+    setTimeout(() => countdown(n - 1), 1000);
+  }
+
+  function startCapture() {
+    capturing = true;
+    progressWrap.classList.remove("hidden");
+    statusText.textContent = "Capturing…";
+    captureID = setInterval(captureFrame, 100);
+  }
+
+  function captureFrame() {
+    if (!capturing) return;
+    const ctx = capCanvas.getContext("2d");
+    ctx.drawImage(video, 0, 0, capCanvas.width, capCanvas.height);
+
+    fetch("/calibrate-frame", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ todo: capCanvas.toDataURL("image/jpeg", 0.85) }),
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.face_found && data.ear > 0.05) {
+        earSamples.push(data.ear);
+        if (data.overlay) drawOverlay(data.overlay, capCanvas.width, capCanvas.height);
+      }
+
+      const count = earSamples.length;
+      const pct   = Math.min(100, (count / CAPTURE_FRAMES) * 100);
+      progressFill.style.width = pct + "%";
+      progressCount.textContent = count + " / " + CAPTURE_FRAMES;
+      framesEl.textContent = count;
+
+      if (count >= CAPTURE_FRAMES) {
+        clearInterval(captureID);
+        capturing = false;
+        progressWrap.classList.add("hidden");
+        finishCalibration();
+      }
+    })
+    .catch(() => {});
+  }
+
+  function drawOverlay(overlay, w, h) {
+    overlayCtx.clearRect(0, 0, overlayC.width, overlayC.height);
+    overlayCtx.strokeStyle = "rgba(88,166,255,0.9)";
+    overlayCtx.lineWidth   = 1.5;
+
+    ["left_eye", "right_eye"].forEach(key => {
+      const pts = overlay[key];
+      if (!pts || !pts.length) return;
+      overlayCtx.beginPath();
+      overlayCtx.moveTo(pts[0][0] * overlayC.width, pts[0][1] * overlayC.height);
+      pts.forEach(p => overlayCtx.lineTo(p[0] * overlayC.width, p[1] * overlayC.height));
+      overlayCtx.closePath();
+      overlayCtx.stroke();
+
+      // Dots on landmarks
+      pts.forEach(p => {
+        overlayCtx.beginPath();
+        overlayCtx.arc(p[0] * overlayC.width, p[1] * overlayC.height, 2, 0, Math.PI * 2);
+        overlayCtx.fillStyle = "rgba(88,166,255,0.9)";
+        overlayCtx.fill();
+      });
+    });
+  }
+
+  function finishCalibration() {
+    const baseline  = earSamples.reduce((a, b) => a + b, 0) / earSamples.length;
+    const suggested = baseline * 0.82;
+
+    baselineEl.textContent  = baseline.toFixed(3);
+    suggestedEl.textContent = suggested.toFixed(3);
+
+    slider.value = suggested.toFixed(3);
+    threshDisp.textContent = suggested.toFixed(3);
+
+    sliderWrap.style.opacity      = "1";
+    sliderWrap.style.pointerEvents = "auto";
+    saveBtn.disabled = false;
+
+    statusText.textContent = "Done";
+    setStep(4);
+  }
+
+  // Slider live update
+  slider.addEventListener("input", () => {
+    threshDisp.textContent = parseFloat(slider.value).toFixed(3);
+  });
+
+  // Save
+  saveBtn.addEventListener("click", () => {
+    const val = parseFloat(slider.value);
+    localStorage.setItem("dg_ear_threshold", val.toFixed(3));
+    savedVal.textContent = val.toFixed(3);
+    savedPill.classList.add("show");
+    storedNotice.style.display = "flex";
+    storedVal.textContent = val.toFixed(3);
+    saveBtn.disabled = true;
+    setStep(5);
+    statusText.textContent = "Saved ✓";
+  });
+
+})();
+</script>
+{% endblock %}
